@@ -1,0 +1,6 @@
+{
+  "name": "Priority-Based Notification Management System",
+  "description": "A college-level Data Structures project demonstrating a Priority Queue via Binary Max-Heap, a Circular FIFO Queue, and a Singly Linked List history implemented in pure C with local file handling and a responsive web dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

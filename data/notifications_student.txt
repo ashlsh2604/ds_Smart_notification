@@ -1,0 +1,5 @@
+106|Security Firewall Breach Alert|Repeated unauthorized attempts.|Security|4|1791728148443|pending
+102|Payment Gateway Webhook Timeout|Third-party payment processor webhook taking > 4,000ms to respond.|Finance|3|1791727955796|pending
+103|Database Read Replica Lag Warning|Secondary replica WAL lag exceeded 12 seconds in us-east-1.|Database|3|1791728075796|pending
+104|Disk Space Usage Exceeded 75%|Log partition /var/log reached warning capacity threshold.|Storage|2|1791727685796|pending
+105|Weekly Database Backup Completed|Automated cold storage backup snapshot uploaded to object store.|Routine|1|1791727535796|pending
