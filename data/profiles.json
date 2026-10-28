@@ -1,0 +1,20 @@
+{
+  "phone_15550192834": {
+    "id": "phone_15550192834",
+    "name": "Alex Test",
+    "phone": "+1 5550192834",
+    "authMethod": "phone",
+    "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=15550192834",
+    "role": "Verified Mobile User",
+    "createdAt": 1793177368721
+  },
+  "g_gamer4life2602_gmail_com": {
+    "id": "g_gamer4life2602_gmail_com",
+    "name": "Gamer 4 Life",
+    "email": "gamer4life2602@gmail.com",
+    "avatar": "https://api.dicebear.com/7.x/initials/svg?seed=Gamer%204%20Life",
+    "authMethod": "google",
+    "role": "Google Account User",
+    "createdAt": 1793177373841
+  }
+}

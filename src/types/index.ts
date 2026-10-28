@@ -74,3 +74,16 @@ export const URGENCY_LABELS: Record<UrgencyLevel, { name: string; tag: string; c
   1: { name: 'Low (P3)', tag: 'P3', color: 'text-emerald-400', bg: 'bg-emerald-950/40', border: 'border-emerald-800/50' },
   0: { name: 'Informational (P4)', tag: 'P4', color: 'text-slate-400', bg: 'bg-slate-900/60', border: 'border-slate-800/60' },
 };
+
+export interface UserSession {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  authMethod: 'google' | 'phone' | 'password';
+  avatar?: string;
+  role?: string;
+  token?: string;
+  createdAt?: number;
+}
+

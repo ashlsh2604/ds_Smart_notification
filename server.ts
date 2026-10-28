@@ -283,7 +283,8 @@ class NativePriorityQueueEngine {
     const oldPriority = node.computedPriority;
     if (newUrgency >= 0) node.urgencyLevel = newUrgency;
     if (newSeverity > 0) node.severityScore = newSeverity;
-    node.computedPriority = this.computePriority(node, now);
+    node.computedPriority = this.computePriority(node);
+
 
     if (node.computedPriority > oldPriority) {
       this.siftUp(idx);
@@ -375,6 +376,20 @@ class NativePriorityQueueEngine {
       this.siftDown(i);
     }
   }
+
+  public ageTick(): number {
+    let boosted = 0;
+    const now = Date.now();
+    for (const item of this.heap) {
+      const ageMinutes = (now - item.createdAt) / 60000;
+      if (ageMinutes > 5 && item.urgencyLevel < 4) {
+        item.ageBoostCount++;
+        boosted++;
+      }
+    }
+    return boosted;
+  }
+
 
   public getState(now = Date.now()) {
     const inv = this.verifyInvariants();
@@ -672,6 +687,210 @@ app.get('/api/c-source', (req: Request, res: Response) => {
 });
 
 /* --- ADDITIONAL ENDPOINTS FOR COLLEGE HTML/JS & REACT FRONTENDS --- */
+
+interface OtpRecord {
+  phone: string;
+  code: string;
+  expiresAt: number;
+  attempts: number;
+}
+const otpStore = new Map<string, OtpRecord>();
+
+interface StoredUserProfile {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  authMethod: 'google' | 'phone' | 'password';
+  avatar?: string;
+  role?: string;
+  createdAt: number;
+}
+
+const SESSIONS_FILE = path.join(DATA_DIR, 'profiles.json');
+function getStoredProfiles(): Record<string, StoredUserProfile> {
+  ensureDataDir();
+  if (fs.existsSync(SESSIONS_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf-8'));
+    } catch {}
+  }
+  return {};
+}
+
+function saveProfile(profile: StoredUserProfile) {
+  ensureDataDir();
+  const profiles = getStoredProfiles();
+  profiles[profile.id] = profile;
+  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(profiles, null, 2), 'utf-8');
+}
+
+// 1. Phone + OTP: Send Verification Code
+app.post('/api/auth/send-otp', (req: Request, res: Response) => {
+  const { phone, countryCode = '+1' } = req.body;
+  const digitsOnly = String(phone || '').replace(/\D/g, '');
+  if (!phone || digitsOnly.length < 6) {
+    return res.status(400).json({ status: 'error', message: 'Please enter a valid phone number with at least 6 digits.' });
+  }
+
+  const cleanPhone = String(phone).trim();
+  const fullPhone = cleanPhone.startsWith('+') ? cleanPhone : `${countryCode} ${cleanPhone}`;
+
+  // Generate 6-digit OTP
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+
+  otpStore.set(fullPhone, {
+    phone: fullPhone,
+    code,
+    expiresAt,
+    attempts: 0,
+  });
+
+  console.log(`[SMS Gateway Simulated] Verification Code for ${fullPhone}: ${code}`);
+
+  return res.json({
+    status: 'ok',
+    message: `Verification code sent to ${fullPhone}`,
+    phone: fullPhone,
+    otp: code, // Shared in response for quick test verification
+    expiresIn: 300,
+  });
+});
+
+// 2. Phone + OTP: Verify Code & Authenticate
+app.post('/api/auth/verify-otp', (req: Request, res: Response) => {
+  const { phone, otp, name } = req.body;
+  if (!phone || !otp) {
+    return res.status(400).json({ status: 'error', message: 'Phone number and verification code are required.' });
+  }
+
+  const cleanPhone = String(phone).trim();
+  let matchedRecord = otpStore.get(cleanPhone);
+
+  if (!matchedRecord) {
+    const cleanDigits = cleanPhone.replace(/\D/g, '');
+    for (const [k, v] of otpStore.entries()) {
+      if (k.replace(/\D/g, '') === cleanDigits) {
+        matchedRecord = v;
+        break;
+      }
+    }
+  }
+
+  // Demo bypass code support for testing convenience
+  const isDemoCode = otp === '123456' || otp === '888888';
+
+  if (!matchedRecord && !isDemoCode) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Verification code not found or expired. Please click "Resend Code".',
+    });
+  }
+
+  if (matchedRecord && Date.now() > matchedRecord.expiresAt && !isDemoCode) {
+    otpStore.delete(matchedRecord.phone);
+    return res.status(400).json({
+      status: 'error',
+      message: 'Verification code has expired. Please request a new code.',
+    });
+  }
+
+  if (matchedRecord && matchedRecord.code !== String(otp).trim() && !isDemoCode) {
+    matchedRecord.attempts += 1;
+    if (matchedRecord.attempts >= 5) {
+      otpStore.delete(matchedRecord.phone);
+      return res.status(400).json({
+        status: 'error',
+        message: 'Too many incorrect attempts. Please request a new code.',
+      });
+    }
+    return res.status(400).json({
+      status: 'error',
+      message: `Invalid code. ${5 - matchedRecord.attempts} attempts remaining.`,
+    });
+  }
+
+  if (matchedRecord) {
+    otpStore.delete(matchedRecord.phone);
+  }
+
+  const cleanDigits = cleanPhone.replace(/\D/g, '');
+  const userProfile: StoredUserProfile = {
+    id: `phone_${cleanDigits}`,
+    name: name?.trim() || `User +${cleanDigits.slice(-4)}`,
+    phone: cleanPhone,
+    authMethod: 'phone',
+    avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanDigits}`,
+    role: 'Verified Mobile User',
+    createdAt: Date.now(),
+  };
+
+  saveProfile(userProfile);
+
+  return res.json({
+    status: 'ok',
+    message: 'Phone number verified successfully.',
+    user: userProfile,
+  });
+});
+
+// 3. Google Sign-In & Profile Verification
+app.post('/api/auth/google', (req: Request, res: Response) => {
+  const { email, name, picture, credential } = req.body;
+
+  let userEmail = email;
+  let userName = name;
+  let userAvatar = picture;
+  let sub = '';
+
+  // If JWT credential from Google Identity Services is provided, decode payload
+  if (credential && typeof credential === 'string') {
+    try {
+      const parts = credential.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+        if (payload.email) userEmail = payload.email;
+        if (payload.name) userName = payload.name;
+        if (payload.picture) userAvatar = payload.picture;
+        if (payload.sub) sub = payload.sub;
+      }
+    } catch (e) {
+      console.warn('Could not parse Google JWT credential payload:', e);
+    }
+  }
+
+  if (!userEmail) {
+    return res.status(400).json({ status: 'error', message: 'Google account email is required.' });
+  }
+
+  const userId = sub || `g_${userEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const displayName = userName || userEmail.split('@')[0];
+  const avatarUrl = userAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(displayName)}`;
+
+  const profile: StoredUserProfile = {
+    id: userId,
+    name: displayName,
+    email: userEmail,
+    avatar: avatarUrl,
+    authMethod: 'google',
+    role: 'Google Account User',
+    createdAt: Date.now(),
+  };
+
+  saveProfile(profile);
+
+  return res.json({
+    status: 'ok',
+    message: `Signed in with Google Account (${userEmail})`,
+    user: profile,
+  });
+});
+
+// 4. Logout Endpoint
+app.post('/api/auth/logout', (_req: Request, res: Response) => {
+  return res.json({ status: 'ok', message: 'Successfully signed out.' });
+});
 
 function getUsers(): Record<string, string> {
   ensureDataDir();

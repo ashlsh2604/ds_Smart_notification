@@ -16,8 +16,11 @@ import {
   Search,
   X,
   Copy,
-  Check
+  Check,
+  Smartphone
 } from 'lucide-react';
+import { UserSession } from './types';
+import LoginPage from './components/LoginPage';
 
 interface NotificationItem {
   id: string | number;
@@ -54,13 +57,27 @@ const PRIORITY_MAP: Record<number, { label: string; badge: string; color: string
 };
 
 export default function App() {
-  // Authentication State
-  const [user, setUser] = useState<string | null>(() => localStorage.getItem('college_pnotif_user') || null);
-  const [authTab, setAuthTab] = useState<'login' | 'signup'>('login');
-  const [usernameInput, setUsernameInput] = useState('student');
-  const [passwordInput, setPasswordInput] = useState('password123');
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [authSuccess, setAuthSuccess] = useState<string | null>(null);
+  // Authentication State with Phone OTP & Google Account support
+  const [userSession, setUserSession] = useState<UserSession | null>(() => {
+    const saved = localStorage.getItem('college_pnotif_user_session');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    const legacyUser = localStorage.getItem('college_pnotif_user');
+    if (legacyUser) {
+      return {
+        id: legacyUser,
+        name: legacyUser,
+        authMethod: 'password',
+      };
+    }
+    return null;
+  });
+
+  const user = userSession ? userSession.name || userSession.email || userSession.phone || 'student' : null;
+
 
   // Dashboard Data State
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -136,67 +153,23 @@ export default function App() {
   }, [user, fetchDashboardData]);
 
   // Auth Handlers
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError(null);
-    setAuthSuccess(null);
-
-    if (!usernameInput.trim() || !passwordInput.trim()) {
-      setAuthError('Please fill in both username and password.');
-      return;
-    }
-
+  const handleLogout = async () => {
     try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: usernameInput.trim(), password: passwordInput.trim() }),
-      });
-      const data = await res.json();
-      if (res.ok && data.status === 'ok') {
-        const loggedUser = usernameInput.trim();
-        setUser(loggedUser);
-        localStorage.setItem('college_pnotif_user', loggedUser);
-      } else {
-        setAuthError(data.message || 'Invalid username or password.');
-      }
-    } catch {
-      setAuthError('Unable to connect to backend server.');
-    }
-  };
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError(null);
-    setAuthSuccess(null);
-
-    if (usernameInput.trim().length < 3 || passwordInput.trim().length < 4) {
-      setAuthError('Username must be ≥ 3 chars and password ≥ 4 chars.');
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: usernameInput.trim(), password: passwordInput.trim() }),
-      });
-      const data = await res.json();
-      if (res.ok && data.status === 'ok') {
-        setAuthSuccess('Account created successfully! You can now log in.');
-        setAuthTab('login');
-      } else {
-        setAuthError(data.message || 'Failed to create account.');
-      }
-    } catch {
-      setAuthError('Unable to connect to backend server.');
-    }
-  };
-
-  const handleLogout = () => {
-    setUser(null);
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {}
+    const prevMethod = userSession?.authMethod;
+    setUserSession(null);
+    localStorage.removeItem('college_pnotif_user_session');
     localStorage.removeItem('college_pnotif_user');
+    showAlert(
+      prevMethod === 'google'
+        ? 'Successfully signed out from Google Account.'
+        : prevMethod === 'phone'
+        ? 'Successfully signed out from Phone session.'
+        : 'Logged out successfully.'
+    );
   };
+
 
   // Notification Operations
   const handleAddNotification = async (e: React.FormEvent) => {
@@ -335,107 +308,25 @@ export default function App() {
   });
 
   // =========================================================================
-  // SCREEN 1: LOGIN AND SIGNUP SCREEN (INITIAL SCREEN)
+  // SCREEN 1: LOGIN PAGE (PHONE NUMBER + OTP, GOOGLE ACCOUNT & STUDENT ID)
   // =========================================================================
-  if (!user) {
+  if (!userSession) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans text-slate-800">
-        <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl shadow-sm p-8">
-          {/* Header */}
-          <div className="text-center mb-6">
-            <span className="text-xs font-bold text-blue-600 uppercase tracking-wider font-mono bg-blue-50 px-2.5 py-1 rounded">
-              College Data Structures Project
-            </span>
-            <h1 className="text-xl font-bold text-slate-900 mt-2">
-              Notification Management System
-            </h1>
-            <p className="text-xs text-slate-500 mt-1">
-              Demonstrating Binary Max-Heap, Circular Queue & Linked List in C
-            </p>
-          </div>
-
-          {/* Login / Sign Up Tabs */}
-          <div className="flex border-b border-slate-200 mb-6">
-            <button
-              onClick={() => { setAuthTab('login'); setAuthError(null); setAuthSuccess(null); }}
-              className={`flex-1 py-2 text-sm font-semibold border-b-2 transition-colors ${
-                authTab === 'login'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Login
-            </button>
-            <button
-              onClick={() => { setAuthTab('signup'); setAuthError(null); setAuthSuccess(null); }}
-              className={`flex-1 py-2 text-sm font-semibold border-b-2 transition-colors ${
-                authTab === 'signup'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Sign Up
-            </button>
-          </div>
-
-          {/* Error / Success Banners */}
-          {authError && (
-            <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-              <span>{authError}</span>
-            </div>
-          )}
-          {authSuccess && (
-            <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
-              <span>{authSuccess}</span>
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={authTab === 'login' ? handleLogin : handleSignup} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Username
-              </label>
-              <input
-                type="text"
-                required
-                value={usernameInput}
-                onChange={(e) => setUsernameInput(e.target.value)}
-                placeholder="e.g. student"
-                className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Password
-              </label>
-              <input
-                type="password"
-                required
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="Enter password"
-                className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg transition-colors shadow-sm"
-            >
-              {authTab === 'login' ? 'Log In to Dashboard' : 'Create Student Account'}
-            </button>
-          </form>
-
-          {/* Academic Hint */}
-          <div className="mt-6 p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-center text-xs text-slate-500 font-mono">
-            Default Demo Account: <strong>student</strong> / <strong>password123</strong>
-          </div>
-        </div>
-      </div>
+      <LoginPage
+        onLoginSuccess={(session) => {
+          setUserSession(session);
+          localStorage.setItem('college_pnotif_user_session', JSON.stringify(session));
+          localStorage.setItem('college_pnotif_user', session.name || session.email || session.phone || 'student');
+          showAlert(
+            session.authMethod === 'google'
+              ? `Signed in as ${session.email} via Google Account!`
+              : session.authMethod === 'phone'
+              ? `Phone ${session.phone} verified! Welcome, ${session.name}.`
+              : `Logged in as student ${session.name}!`
+          );
+        }}
+        defaultEmail="gamer4life2602@gmail.com"
+      />
     );
   }
 
@@ -470,17 +361,78 @@ export default function App() {
               <span>Inspect C Code</span>
             </button>
 
-            <span className="hidden sm:inline text-xs text-slate-500">
-              User: <strong className="text-slate-800">{user}</strong>
-            </span>
-
-            <button
-              onClick={handleLogout}
-              className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors flex items-center gap-1 border border-slate-200"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Logout</span>
-            </button>
+            {/* Authenticated User Session Profile with Google Sign Out */}
+            <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
+              {userSession.authMethod === 'google' ? (
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <img
+                      src={userSession.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${userSession.name}`}
+                      alt={userSession.name}
+                      className="w-7 h-7 rounded-full border border-blue-400 object-cover bg-blue-50"
+                    />
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border border-white rounded-full" />
+                  </div>
+                  <div className="hidden sm:flex flex-col text-left">
+                    <div className="text-xs font-bold text-slate-800 leading-tight flex items-center gap-1">
+                      <span>{userSession.name}</span>
+                      <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-200">
+                        Google
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400 leading-tight truncate max-w-[140px]">
+                      {userSession.email}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    title="Sign Out from Google Account"
+                    className="ml-1 px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-colors flex items-center gap-1 shadow-xs"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span className="hidden md:inline">Sign Out</span>
+                  </button>
+                </div>
+              ) : userSession.authMethod === 'phone' ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs border border-emerald-300">
+                    <Smartphone className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="hidden sm:flex flex-col text-left">
+                    <div className="text-xs font-bold text-slate-800 leading-tight flex items-center gap-1">
+                      <span>{userSession.name}</span>
+                      <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
+                        SMS Verified
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400 leading-tight">
+                      {userSession.phone}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    title="Sign Out from Phone Session"
+                    className="ml-1 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-rose-700 bg-slate-100 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-md transition-colors flex items-center gap-1"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span className="hidden md:inline">Sign Out</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="hidden sm:inline text-xs text-slate-600">
+                    User: <strong className="text-slate-900">{user}</strong>
+                  </span>
+                  <button
+                    onClick={handleLogout}
+                    className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors flex items-center gap-1 border border-slate-200"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
